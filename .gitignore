@@ -1,0 +1,16 @@
+﻿# Python
+.venv/
+__pycache__/
+*.json
+dump/
+api-python/dump/
+
+# Node / Vue
+node_modules/
+dist/
+
+# Java / IDEs
+target/
+.idea/
+.vscode/
+*.iml
