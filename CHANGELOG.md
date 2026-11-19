@@ -10,12 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Normalized validation models with Pydantic (`schemas.py`):
+- Normalized validation models with Pydantic (`schemas/ac.py` and `schemas/session.py`):
   - `LoginRequest`, `AcStatus`, and `AcCommand`.
   - Strict literal types for supported brands (`BrandType`), work modes (`WorkModeType`), fan speeds (`FanSpeedType`), and louver swing (`SwingType`).
   - Target temperature bounds validation (16°C to 30°C).
 - Added `msmart-ng` dependency for local LAN communication (M-Smart V3 protocol) with Midea appliances.
 - Added modern project configuration file (`pyproject.toml`) for Python package metadata and version tracking.
+- Comprehensive Midea diagnostic, discovery, and setup documentation in `api-python/README.md`.
 
 ### Changed
 - Refactored settings module into a dedicated `config/` package using `pydantic-settings`.
@@ -35,4 +36,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `POST /control` endpoint to send appliance commands.
 - Local CORS policy configured for `localhost:5173` and `tauri://localhost`.
 - Architecture and technical overview documentation in `README.md`.
-- Midea test connect
