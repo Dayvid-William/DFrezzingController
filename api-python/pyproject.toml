@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dfrezzing-api"
+version = "0.1.0"
+description = "Local bridge and sidecar API for Hisense and Midea air conditioners"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Dayvid William" }
+]
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "connectlife>=0.15.0",
+    "msmart-ng>=2024.11.0",
+    "python-dotenv>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
