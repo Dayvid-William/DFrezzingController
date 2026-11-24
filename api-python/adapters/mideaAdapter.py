@@ -28,9 +28,17 @@ class MideaAdapter(BaseAcAdapter[MideaSession]):
         return self.device, self.session
 
     async def _discover_ip(self, device_id: int) -> str:
-        discovered = await Discover.discover(auto_connect=False)
+        try:
+            discovered = await Discover.discover(auto_connect=False)
+        except OSError as exc:
+            logger.error("Erro na descoberta UDP Midea: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail="Erro de rede ao buscar aparelhos Midea na rede local (UDP).",
+            ) from exc
         matched = next((d.ip for d in discovered if d.id == device_id and d.ip), None)
         if not matched:
+            logger.warning("Aparelho Midea (id=%s) não encontrado na rede local (UDP).", device_id)
             raise HTTPException(
                 status_code=504,
                 detail="Ar-condicionado Midea não encontrado na rede local (UDP).",
@@ -55,6 +63,7 @@ class MideaAdapter(BaseAcAdapter[MideaSession]):
             return await operation(refreshed_device)
 
     async def _get_cloud_client(self, email: str, password: str):
+        errors: list[str] = []
         for cloud_cls in [SmartHomeCloud, NetHomePlusCloud]:
             try:
                 logger.debug("Tentando login na nuvem %s", cloud_cls.__name__)
@@ -63,29 +72,46 @@ class MideaAdapter(BaseAcAdapter[MideaSession]):
                 logger.info("Autenticado com sucesso na nuvem %s", cloud_cls.__name__)
                 return cloud
             except CloudError as exc:
-                logger.debug("Falha no %s: %s", cloud_cls.__name__, exc)
+                errors.append(f"{cloud_cls.__name__}: {exc}")
                 continue
+        logger.warning("Falha de autenticação na nuvem Midea: %s", " | ".join(errors))
         raise HTTPException(
             status_code=401,
             detail="Falha ao autenticar na nuvem Midea. Verifique seu e-mail e senha.",
         )
 
     async def _fetch_keys(self, cloud, device_id: int) -> tuple[str, str]:
+        last_exc: CloudError | None = None
         for endian in ["little", "big"]:
             udpid = Security.udpid(device_id.to_bytes(6, endian)).hex()
             try:
                 token, key = await cloud.get_token(udpid, device_id)
                 return token, key
-            except CloudError:
+            except CloudError as exc:
+                last_exc = exc
                 continue
+        logger.warning(
+            "Falha ao obter token/chave Midea na nuvem (device_id=%s): %s",
+            device_id,
+            last_exc,
+        )
         raise HTTPException(
             status_code=404,
             detail="Não foi possível obter token/chave de criptografia para o aparelho Midea.",
         )
 
     async def login(self, email: str, password: str) -> MideaSession:
-        discovered = await Discover.discover(auto_connect=False)
+        logger.info("Iniciando login Midea")
+        try:
+            discovered = await Discover.discover(auto_connect=False)
+        except OSError as exc:
+            logger.error("Erro na descoberta UDP Midea: %s", exc)
+            raise HTTPException(
+                status_code=502,
+                detail="Erro de rede ao buscar aparelhos Midea na rede local (UDP).",
+            ) from exc
         if not discovered:
+            logger.warning("Nenhum ar-condicionado Midea encontrado na rede local (UDP).")
             raise HTTPException(
                 status_code=504,
                 detail="Nenhum ar-condicionado Midea encontrado na rede local (UDP).",
@@ -107,6 +133,7 @@ class MideaAdapter(BaseAcAdapter[MideaSession]):
             key=key.hex() if isinstance(key, bytes) else str(key),
         )
         await self.restore(session)
+        logger.info("Login Midea OK — device=%s (ip=%s)", session.device_name, session.ip)
         return session
 
     async def restore(self, session: MideaSession) -> None:
@@ -114,11 +141,28 @@ class MideaAdapter(BaseAcAdapter[MideaSession]):
         dev = MideaAC(ip=session.ip, port=MIDEA_PORT, device_id=session.device_id)
         try:
             await dev.authenticate(session.token, session.key)
-        except AuthenticationError as e:
+        except AuthenticationError as exc:
+            logger.warning(
+                "Falha na autenticação LAN Midea (device=%s, ip=%s): %s",
+                session.device_name,
+                session.ip,
+                exc,
+            )
             raise HTTPException(
                 status_code=401,
-                detail=f"Falha na autenticação local LAN com o ar-condicionado Midea: {e}",
+                detail=f"Falha na autenticação local LAN com o ar-condicionado Midea: {exc}",
+            ) from exc
+        except OSError as exc:
+            logger.error(
+                "Erro de rede na autenticação LAN Midea (device=%s, ip=%s): %s",
+                session.device_name,
+                session.ip,
+                exc,
             )
+            raise HTTPException(
+                status_code=502,
+                detail=f"Erro de comunicação LAN com o ar-condicionado Midea: {exc}",
+            ) from exc
         self.device = dev
 
     async def get_status(self) -> AcStatus:

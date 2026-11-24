@@ -47,40 +47,44 @@ async def _bootstrap_adapter() -> BaseAcAdapter[BaseSession] | None:
 async def lifespan(app: FastAPI):
     try:
         app.state.adapter = await _bootstrap_adapter()
-    except HTTPException:
-        logger.warning("Bootstrap falhou (HTTPException) — API iniciada sem sessão")
+    except HTTPException as exc:
+        logger.warning("Bootstrap falhou (%s): %s — API iniciada sem sessão", exc.status_code, exc.detail)
         app.state.adapter = None
-    except Exception:
-        logger.exception("Erro inesperado durante bootstrap")
+    except Exception as exc:
+        logger.error("Erro inesperado durante bootstrap (%s): %s", type(exc).__name__, exc)
         app.state.adapter = None
     yield
 
 
 app = FastAPI(title=settings.app_title, lifespan=lifespan)
 
+
+@app.middleware("http")
+async def catch_unhandled_errors(request: Request, call_next):
+    """Intercepta exceções não tratadas antes do ServerErrorMiddleware/uvicorn, evitando stacktraces no console."""
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        logger.error(
+            "%s %s — %s: %s",
+            request.method,
+            request.url.path,
+            type(exc).__name__,
+            exc,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Erro interno do servidor."},
+        )
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
-    allow_credentials=[True]
+    allow_credentials=[True],
 )
-
-
-@app.exception_handler(Exception)
-async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Captura exceções não tratadas e retorna JSON limpo em vez de stacktrace."""
-    logger.error(
-        "%s %s — erro não tratado: %s",
-        request.method,
-        request.url.path,
-        exc,
-        exc_info=True,
-    )
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Erro interno do servidor."},
-    )
 
 
 def _require_adapter() -> BaseAcAdapter[BaseSession]:
