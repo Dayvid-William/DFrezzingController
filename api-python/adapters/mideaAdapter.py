@@ -6,12 +6,14 @@ from msmart.device import AirConditioner as MideaAC
 from msmart.discover import Discover
 from msmart.lan import AuthenticationError, Security
 from adapters.baseAdapter import BaseAcAdapter
+from config.logging import get_logger
 from config.session import SessionManager
 from enums import MIDEA_AC_DEVICE_TYPE, MIDEA_PORT
 from mappers import MideaMapper
 from schemas import AcCommand, AcStatus, MideaSession
 
 T = TypeVar("T")
+logger = get_logger("adapter.midea")
 
 
 class MideaAdapter(BaseAcAdapter[MideaSession]):
@@ -46,7 +48,8 @@ class MideaAdapter(BaseAcAdapter[MideaSession]):
         device, _ = self._require_device()
         try:
             return await operation(device)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Operação falhou (%s) — tentando recuperação via DHCP", exc)
             await self._recover_dhcp_ip()
             refreshed_device, _ = self._require_device()
             return await operation(refreshed_device)
@@ -54,10 +57,13 @@ class MideaAdapter(BaseAcAdapter[MideaSession]):
     async def _get_cloud_client(self, email: str, password: str):
         for cloud_cls in [SmartHomeCloud, NetHomePlusCloud]:
             try:
+                logger.debug("Tentando login na nuvem %s", cloud_cls.__name__)
                 cloud = cloud_cls(account=email, password=password)
                 await cloud.login()
+                logger.info("Autenticado com sucesso na nuvem %s", cloud_cls.__name__)
                 return cloud
-            except CloudError:
+            except CloudError as exc:
+                logger.debug("Falha no %s: %s", cloud_cls.__name__, exc)
                 continue
         raise HTTPException(
             status_code=401,

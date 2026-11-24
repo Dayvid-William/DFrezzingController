@@ -2,8 +2,11 @@ from connectlife.api import ConnectLifeApi
 from connectlife.appliance import ConnectLifeAppliance
 from fastapi import HTTPException
 from adapters.baseAdapter import BaseAcAdapter
+from config.logging import get_logger
 from mappers import HisenseMapper
 from schemas import AcCommand, AcStatus, HisenseSession
+
+logger = get_logger("adapter.hisense")
 
 
 class HisenseAdapter(BaseAcAdapter[HisenseSession]):
@@ -18,10 +21,12 @@ class HisenseAdapter(BaseAcAdapter[HisenseSession]):
         return self.client, self.client.appliances[0]
 
     async def login(self, email: str, password: str) -> HisenseSession:
+        logger.info("Iniciando login Hisense")
         self.client = ConnectLifeApi(email, password)
         await self.client.login()
         await self.client.get_appliances()
         _, device = self._require_device()
+        logger.info("Login Hisense OK — device=%s", device.device_nickname)
 
         return HisenseSession(
             email=email,
